@@ -76,6 +76,7 @@ if st.button("Generate content"):
     {"- Keywords that should be present in this text (for SEO): " + keywords if keywords else ""}
     - Create an additional paragraph showing the response in a valid, structured JSON object.
     - The JSON must be properly formatted with indentation (pretty-printed).
+    - Generate the text in the language identified in the topic.
     """
     try:
         res = llm_generate(llm, prompt)
@@ -98,7 +99,7 @@ if st.button("Generate content"):
         if result["status"] in ["valid", "fixed"]:
             st.code(json.dumps(result["json"], indent=2, ensure_ascii=False), language="json")
             if result["status"] == "fixed":
-                st.warning("O JSON original continha erros, mas foi corrigido automaticamente.")
+                st.warning("The original JSON contained errors, but it was automatically fixed.")
         else:
             st.error(f"Erro no JSON: {result['error']}")
             st.code(result["raw"], language="json")
