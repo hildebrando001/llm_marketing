@@ -4,3 +4,4 @@ langchain-groq
 ipywidgets
 streamlit
 python-dotenv
+langdetect
