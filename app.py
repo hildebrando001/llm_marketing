@@ -2,12 +2,35 @@ import streamlit as st
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain.tools import tool
 from dotenv import load_dotenv
 import json
+import re
 
 load_dotenv()
 
-## conexão com a LLM
+# Defining the tool to validate and correct JSON
+@tool
+def validate_and_fix_json(json_string: str) -> dict:
+    """Valida um JSON e tenta corrigir erros comuns se inválido."""
+    try:
+        # Try to parse the JSON
+        return {"status": "valid", "json": json.loads(json_string)}
+    except json.JSONDecodeError as e:
+        # Attempts to correct common errors (e.g., missing quotation marks, extra commas)
+        fixed_json = json_string
+        # Remove extra commas before }
+        fixed_json = re.sub(r',\s*}', '}', fixed_json)
+        # Removes extra commas before ]
+        fixed_json = re.sub(r',\s*]', ']', fixed_json)
+        try:
+            # TTry parsing again
+            parsed = json.loads(fixed_json)
+            return {"status": "fixed", "json": parsed}
+        except json.JSONDecodeError:
+            return {"status": "invalid", "error": str(e), "raw": json_string}
+
+# Connection with LLM
 id_model = "llama3-70b-8192"
 llm = ChatGroq(
     model=id_model,
@@ -17,13 +40,12 @@ llm = ChatGroq(
     max_retries=2,
 )
 
-## função de geração
+# Generation function
 def llm_generate(llm, prompt):
     template = ChatPromptTemplate.from_messages([
         ("system", "You are a digital marketing specialist with a focus on SEO and persuasive writing."),
         ("human", "{prompt}"),
     ])
-
     chain = template | llm | StrOutputParser()
     res = chain.invoke({"prompt": prompt})
     return res
@@ -31,7 +53,7 @@ def llm_generate(llm, prompt):
 st.set_page_config(page_title="Content Generator 🤖", page_icon="🤖")
 st.title("Content Generator")
 
-# Campos do formulário
+# Form fields
 topic = st.text_input("Theme:", placeholder="Ex: mental health, healthy eating, prevention, etc.")
 platform = st.selectbox("Platform:", ['Instagram', 'Facebook', 'LinkedIn', 'Blog', 'E-mail'])
 tone = st.selectbox("Tone:", ['Normal', 'Informative', 'Inspirational', 'Urgent', 'Informal'])
@@ -58,22 +80,28 @@ if st.button("Generate content"):
     try:
         res = llm_generate(llm, prompt)
 
-        # tentar extrair JSON se houver
-        try:
-            json_start = res.find("{")
-            json_end = res.rfind("}") + 1
-            json_part = res[json_start:json_end]
+        # Extract text and JSON
+        json_start = res.find("{")
+        json_end = res.rfind("}") + 1
+        text_part = res[:json_start].strip()
+        json_part = res[json_start:json_end].strip()
 
-            parsed = json.loads(json_part)
-            formatted_json = json.dumps(parsed, indent=2, ensure_ascii=False)
+        # Display the generated text
+        st.markdown("### Generated Content")
+        st.markdown(text_part)
 
-            # exibe o texto antes do JSON
-            st.markdown(res[:json_start].strip())
-            st.markdown("### Estrutura JSON")
-            st.code(formatted_json, language="json")
-        except Exception:
-            # fallback: mostra tudo como texto
-            st.markdown(res)
+        # Use the tool to validate/correct JSON
+        result = validate_and_fix_json(json_part)
+
+        # Display the JSON
+        st.markdown("### JSON Output")
+        if result["status"] in ["valid", "fixed"]:
+            st.code(json.dumps(result["json"], indent=2, ensure_ascii=False), language="json")
+            if result["status"] == "fixed":
+                st.warning("O JSON original continha erros, mas foi corrigido automaticamente.")
+        else:
+            st.error(f"Erro no JSON: {result['error']}")
+            st.code(result["raw"], language="json")
 
     except Exception as e:
         st.error(f"Erro: {e}")
